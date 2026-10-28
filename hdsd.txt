@@ -1,0 +1,5 @@
+  Quy trình thêm account 3, 4, 5…:
+
+  1. Tạo bot mới qua @BotFather; tạo supergroup có Topics; thêm bot làm admin.
+  2. Chạy: new-account.bat account3 <bot-token> <group-id>
+  3. Trong vài giây manager tự chạy instance mới → gửi /login trong group đó để quét QR.

@@ -41,6 +41,7 @@ import type { ZaloAPI, ZaloMessage } from '../zalo/types.js';
 import { ZALO_MSG_TYPES } from '../zalo/types.js';
 import { store, msgStore, userCache, friendsCache, groupsCache, sentMsgStore, pollStore, mediaGroupStore, reactionEchoStore, reactionSummaryStore, reactionEventDedupeStore, aliasCache, markRecalled, type ZaloQuoteData } from '../store.js';
 import { getAutoReplyState, setAutoReplyEnabled, AUTO_REPLY_COOLDOWN_MIN, AUTO_REPLY_MAX_PER_HOUR } from '../zalo/autoReply.js';
+import { isMediaSpoilerEnabled, setMediaSpoilerEnabled } from '../utils/mediaSpoiler.js';
 import { replayHistoryMessages, requestGroupHistory } from '../zalo/handler.js';
 import { tgBot } from './bot.js';
 import { config } from '../config.js';
@@ -924,6 +925,55 @@ export function setupTelegramHandler(
     await ctx.telegram.sendMessage(
       config.telegram.groupId,
       '❓ Dùng: <code>/autoreply on &lt;nội dung&gt;</code> | <code>/autoreply off</code> | <code>/autoreply status</code>',
+      { ...replyOpts, parse_mode: 'HTML' },
+    );
+  });
+
+  // /spoiler on | off | status — cover Zalo→Telegram photos & videos with
+  // Telegram's spoiler animation.
+  tgBot.command('spoiler', async (ctx) => {
+    if (ctx.chat.id !== config.telegram.groupId) return;
+    if (!await requireTelegramOperator(ctx, 'đổi chế độ spoiler')) return;
+    const topicId = 'message_thread_id' in ctx.message
+      ? (ctx.message.message_thread_id as number | undefined)
+      : undefined;
+    const replyOpts = topicId ? { message_thread_id: topicId } : {};
+
+    const subCmd = (ctx.message.text ?? '')
+      .replace(/^\/spoiler(?:@\S+)?\s*/i, '')
+      .trim()
+      .toLowerCase();
+
+    if (!subCmd || subCmd === 'status') {
+      await ctx.telegram.sendMessage(
+        config.telegram.groupId,
+        `🫥 <b>Spoiler ảnh/video</b>: ${isMediaSpoilerEnabled() ? '🟢 BẬT' : '🔴 TẮT'}\n`
+        + '<i>Ảnh và video Zalo gửi sang sẽ bị che mờ cho tới khi bấm vào.</i>'
+        + '\n\nDùng: <code>/spoiler on</code> | <code>/spoiler off</code> | <code>/spoiler status</code>',
+        { ...replyOpts, parse_mode: 'HTML' },
+      );
+      return;
+    }
+
+    if (subCmd === 'off') {
+      setMediaSpoilerEnabled(false);
+      await ctx.telegram.sendMessage(config.telegram.groupId, '🔴 Đã TẮT spoiler cho ảnh/video.', replyOpts);
+      return;
+    }
+
+    if (subCmd === 'on') {
+      setMediaSpoilerEnabled(true);
+      await ctx.telegram.sendMessage(
+        config.telegram.groupId,
+        '🟢 Đã BẬT spoiler cho ảnh/video.\n<i>Ảnh và video Zalo gửi sang sẽ được che mờ.</i>',
+        { ...replyOpts, parse_mode: 'HTML' },
+      );
+      return;
+    }
+
+    await ctx.telegram.sendMessage(
+      config.telegram.groupId,
+      '❓ Dùng: <code>/spoiler on</code> | <code>/spoiler off</code> | <code>/spoiler status</code>',
       { ...replyOpts, parse_mode: 'HTML' },
     );
   });

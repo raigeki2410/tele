@@ -12,6 +12,14 @@ English: [README.md](README.md)
 
 ## Dự án này làm gì
 
+### Tích hợp Tammi (thử nghiệm)
+
+Bridge có thể chuyển tin nhắn văn bản Tammi ↔ Telegram theo từng forum topic bằng bot Telegram riêng. Cài và đăng nhập [hermes-tammi-plugin](https://socket.dev/npm/package/hermes-tammi-plugin) một lần. Đặt `TAMMI_BRIDGE_URL=http://127.0.0.1:8788` và `TAMMI_TG_TOKEN` trong `.env`. Nếu dùng group riêng, đặt `TAMMI_TG_GROUP_ID`; mặc định dùng `TG_GROUP_ID`. Thêm bot Tammi làm admin của forum group. Nếu bridge dùng khóa, đặt thêm `TAMMI_BRIDGE_TOKEN`. Khi dự án chạy, nó tự khởi động HTTP bridge Tammi nếu chưa chạy. Gửi `/tammi status` trong group để kiểm tra trạng thái; `/tammi id` để lấy group ID. Hội thoại Tammi mới sẽ tự tạo topic khi có tin đến. Trong một topic Telegram trống, admin có thể dùng `/tammi bind <conversationId> [conversationType]` với bot Tammi để liên kết thủ công, `/tammi` để xem liên kết và `/tammi unbind` để hủy.
+
+Nếu chưa đăng nhập Tammi, chạy `hermes-tammi-plugin login --import` trên máy chủ. Đăng nhập SMS OTP trong Chrome/Edge tại tammi.vn, chạy lệnh `copy(JSON.stringify({token:localStorage.token,refresh_token:localStorage.refresh_token,device_id:localStorage.device_id}))` trong Console của tab đã đăng nhập, rồi dán JSON vào lời nhắc cục bộ của CLI. Không gửi JSON phiên hoặc OTP qua Telegram. Các lần chạy sau dùng phiên được lưu và tự làm mới.
+
+Hiện adapter Tammi chỉ chuyển văn bản và caption; tệp, ảnh, reply và reaction chưa được đồng bộ. Cần có phiên Tammi hợp lệ trong bridge HTTP riêng. Tích hợp này dùng API HTTP/SSE của gói cộng đồng, không phải API chính thức của Tammi.
+
 `zalo-tg` biến một Telegram supergroup có bật forum topic thành trung tâm đọc/trả lời Zalo:
 
 - mỗi DM hoặc nhóm Zalo được ánh xạ vào một Telegram topic;

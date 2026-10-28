@@ -7,8 +7,17 @@ bin/
 
 # Environment & secrets — KHÔNG commit các file này
 .env
+.env.*
+!.env.example
+.env.root-old
 credentials.json
 *.json.bak
+
+# Local account instances and runtime state
+instances/
+
+# Local assistant/editor metadata
+.commandcode/
 
 # Dữ liệu runtime
 data/topics.json

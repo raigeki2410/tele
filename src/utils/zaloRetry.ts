@@ -106,6 +106,14 @@ export async function withZaloRetry<T>(
 }
 
 /**
+ * zca-js methods that are SYNCHRONOUS. Wrapping them in `withZaloRetry` turns
+ * their return value into a Promise, which silently corrupts every caller that
+ * reads it directly — e.g. `String(api.getOwnId())` used to store the literal
+ * string "[object Promise]" as the account's own uid.
+ */
+const SYNC_METHODS = new Set(['getOwnId', 'getCookie', 'getContext']);
+
+/**
  * Proxy that routes every method call on a Zalo API object through
  * `withZaloRetry`. Drop-in replacement for the raw `api` reference:
  *
@@ -120,6 +128,10 @@ export function zaloApiWithRetry(api: any): any {
     get(target, prop: string) {
       const orig = target[prop];
       if (typeof orig !== 'function') return orig;
+      if (SYNC_METHODS.has(String(prop))) {
+        return (...args: unknown[]) =>
+          (orig as (...a: unknown[]) => unknown).apply(target, args);
+      }
       return (...args: unknown[]) =>
         withZaloRetry(
           () => (orig as (...a: unknown[]) => Promise<unknown>).apply(target, args),

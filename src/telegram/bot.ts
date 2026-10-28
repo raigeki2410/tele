@@ -18,6 +18,7 @@ const BOT_COMMANDS = [
   { command: 'topic',          description: 'Quản lý topic: list | info | delete' },
   { command: 'history',        description: 'Nạp lịch sử chat nhóm vào topic hiện tại' },
   { command: 'autoreply',      description: 'Tự trả lời DM khi offline: on | off | status' },
+  { command: 'spoiler',        description: 'Che mờ ảnh/video Zalo→Telegram: on | off | status' },
   { command: 'addgroup',       description: 'Tạo nhóm Zalo mới từ topic hiện tại' },
   { command: 'addfriend',      description: 'Gửi lời mời kết bạn Zalo' },
   { command: 'friendrequests', description: 'Xem & duyệt lời mời kết bạn đang chờ' },

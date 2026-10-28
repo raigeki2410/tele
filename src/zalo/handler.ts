@@ -17,7 +17,39 @@ import { applyZaloMarkupHtml, formatGroupMsgHtml, formatGroupMsg, groupCaption, 
 import type { ZaloStyle } from '../utils/format.js';
 import { msgStore, userCache, pollStore, sentMsgStore, zaloAlbumStore, reactionEchoStore, reactionSummaryStore, reactionEventDedupeStore, aliasCache, friendsCache, recentlyRecalledMsgIds, recallNotifiedStore, type ZaloQuoteData } from '../store.js';
 import { tgQueue } from '../utils/tgQueue.js';
+import { isMediaSpoilerEnabled } from '../utils/mediaSpoiler.js';
 import { maybeAutoReply } from './autoReply.js';
+
+/**
+ * fs.createReadStream() streams are one-shot. tgQueue retries by re-invoking the
+ * same closure with the same args, so a retried upload would re-send an already
+ * consumed stream — an empty body — and fail with "socket hang up".
+ *
+ * Telegraf re-opens the file on EVERY attempt when `source` is a path string
+ * (telegraf/lib/core/network/client.js: `typeof media.source === 'string'` →
+ * `fs.createReadStream(...)`). Streams created from a path carry it on `.path`,
+ * so swap the stream for its path before the call enters the retry queue.
+ */
+function makeReplayable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(v => makeReplayable(v));
+  if (value === null || typeof value !== 'object') return value;
+  const obj = value as Record<string, unknown>;
+
+  let out = obj;
+  const src = obj['source'];
+  if (
+    src !== null && typeof src === 'object' &&
+    typeof (src as { pipe?: unknown }).pipe === 'function' &&
+    typeof (src as { path?: unknown }).path === 'string'
+  ) {
+    out = { ...obj, source: (src as { path: string }).path };
+  }
+  const media = out['media'];
+  if (media !== null && typeof media === 'object') {
+    out = { ...out, media: makeReplayable(media) };
+  }
+  return out;
+}
 
 // Proxy that routes every tg.* call through the rate-limit queue
 // so 429 errors are auto-retried instead of crashing the process.
@@ -25,8 +57,10 @@ const tg = new Proxy(tgBot.telegram, {
   get(target, prop: string) {
     const orig = (target as unknown as Record<string, unknown>)[prop];
     if (typeof orig !== 'function') return orig;
-    return (...args: unknown[]) =>
-      tgQueue(() => (orig as (...a: unknown[]) => Promise<unknown>).apply(target, args));
+    return (...args: unknown[]) => {
+      const safeArgs = args.map(a => makeReplayable(a));
+      return tgQueue(() => (orig as (...a: unknown[]) => Promise<unknown>).apply(target, safeArgs));
+    };
   },
 }) as typeof tgBot.telegram;
 
@@ -319,6 +353,31 @@ async function resolveUserDisplayName(
   return (fallback && fallback !== 'ai đó') ? fallback : (cleanUid || fallback);
 }
 
+/**
+ * Resolve a Zalo user's avatar URL via getUserInfo (keyed "uid_0").
+ * Used once per DM conversation, to pin the peer's avatar in their topic.
+ */
+async function resolveUserAvatarUrl(api: ZaloAPI, uid: string): Promise<string | undefined> {
+  if (!uid) return undefined;
+  try {
+    const resp = await api.getUserInfo(uid) as {
+      changed_profiles?: Record<string, { avatar?: string }>;
+      unchanged_profiles?: Record<string, { avatar?: string }>;
+    };
+    const uidKey = uid.includes('_') ? uid : `${uid}_0`;
+    const profile =
+      resp?.changed_profiles?.[uidKey] ??
+      resp?.changed_profiles?.[uid] ??
+      resp?.unchanged_profiles?.[uidKey] ??
+      resp?.unchanged_profiles?.[uid];
+    const url = profile?.avatar?.trim();
+    return url || undefined;
+  } catch (err) {
+    console.warn(`[Zalo] resolveUserAvatarUrl failed for ${uid}:`, err);
+    return undefined;
+  }
+}
+
 async function maybeRenameExistingDmTopic(
   topicId: number,
   zaloId: string,
@@ -457,8 +516,9 @@ async function _doCreateTopic(
   store.set({ topicId, zaloId, type, name: displayName });
   console.log(`[Zalo→TG] New topic: "${name}" (topicId=${topicId})`);
 
-  // Pin group avatar as the first message in the topic
-  if (type === 1 /* Group */ && avatarUrl) {
+  // Pin the conversation avatar as the first message in the topic
+  // (group avatar for groups, peer avatar for DMs).
+  if (avatarUrl) {
     let localPath: string | undefined;
     try {
       localPath = await downloadToTemp(avatarUrl, `avatar_${Date.now()}.jpg`);
@@ -468,17 +528,19 @@ async function _doCreateTopic(
           telegramMediaFile(localPath!, forceMultipart),
           {
             message_thread_id: topicId,
-            caption: `🖼 Ảnh đại diện nhóm <b>${escapeHtml(displayName)}</b>`,
+            caption: type === 1
+              ? `🖼 Ảnh đại diện nhóm <b>${escapeHtml(displayName)}</b>`
+              : `🖼 Ảnh đại diện <b>${escapeHtml(displayName)}</b>`,
             parse_mode: 'HTML',
           },
         ),
-        'Group avatar upload',
+        'Topic avatar upload',
       );
       try {
         await tg.pinChatMessage(config.telegram.groupId, avatarMsg.message_id, { disable_notification: true });
       } catch { /* pinning requires admin rights */ }
     } catch (avatarErr) {
-      console.warn(`[Zalo→TG] Failed to pin group avatar for ${displayName}:`, avatarErr);
+      console.warn(`[Zalo→TG] Failed to pin avatar for ${displayName}:`, avatarErr);
     } finally {
       if (localPath) await cleanTemp(localPath);
     }
@@ -888,16 +950,21 @@ export async function setupZaloHandler(api: ZaloAPI): Promise<void> {
       let bridgeSenderName = msg.isSelf
         ? senderName
         : await resolveUserDisplayName(api, senderUid, 'ai đó', type === ThreadType.Group ? zaloId : undefined);
-      let groupAvatarUrl: string | undefined;
+      let topicAvatarUrl: string | undefined;
       if (type === ThreadType.Group) {
         const info = await getCachedGroupInfo(api, zaloId);
         displayName = info.name || senderName;
-        groupAvatarUrl = info.avt;
+        topicAvatarUrl = info.avt;
       } else {
         // For DMs, zaloId is the peer's UID — resolve their real name for the topic name.
         // bridgeSenderName is already set correctly above (sender's name, or 'Bạn' if isSelf).
         const realName = await resolveUserDisplayName(api, zaloId);
         displayName = realName;
+        // The peer avatar is only needed when the topic is first created, so the
+        // extra API call happens once per conversation rather than per message.
+        if (store.getTopicByZalo(zaloId, 0) === undefined) {
+          topicAvatarUrl = await resolveUserAvatarUrl(api, zaloId);
+        }
       }
 
       // Keep userCache up-to-date so TG→Zalo mention resolution works.
@@ -909,7 +976,7 @@ export async function setupZaloHandler(api: ZaloAPI): Promise<void> {
         userCache.save(senderUid, bridgeSenderName);
       }
 
-      const topicId = await getOrCreateTopic(zaloId, type, displayName, groupAvatarUrl);
+      const topicId = await getOrCreateTopic(zaloId, type, displayName, topicAvatarUrl);
 
       // Resolve Telegram reply target from incoming Zalo quote (if any)
       let tgReplyMsgId: number | undefined;
@@ -962,6 +1029,10 @@ export async function setupZaloHandler(api: ZaloAPI): Promise<void> {
 
       const caption = groupCaption(bridgeSenderName);
       const tgOpts  = { ...tgBase, parse_mode: 'HTML' as const, caption };
+
+      // Photos/videos only: Telegram supports has_spoiler for these (documents,
+      // voice, stickers do not). Toggled at runtime via /spoiler.
+      const spoilerExtra = isMediaSpoilerEnabled() ? { has_spoiler: true } : {};
 
       // Build quote data + mapping helper — saved after every successful TG send
       const zaloMsgIds = [
@@ -1113,6 +1184,7 @@ export async function setupZaloHandler(api: ZaloAPI): Promise<void> {
                     telegramMediaFile(localPath, forceMultipart),
                     {
                       ...buf.tgBase,
+                      ...spoilerExtra,
                       parse_mode: 'HTML' as const,
                       caption: buf.caption
                         ? `${groupCaption(buf.senderName)}\n${escapeHtml(buf.caption)}`
@@ -1169,6 +1241,7 @@ export async function setupZaloHandler(api: ZaloAPI): Promise<void> {
                         telegramMediaFile(batch[0]!, forceMultipart),
                         {
                           ...buf.tgBase,
+                          ...spoilerExtra,
                           ...(isFirstBatch && captionText
                             ? { caption: captionText, parse_mode: 'HTML' as const }
                             : {}),
@@ -1184,6 +1257,7 @@ export async function setupZaloHandler(api: ZaloAPI): Promise<void> {
                         const mediaItems: any[] = batch.map((lp, j) => ({
                           type: 'photo',
                           media: telegramMediaFile(lp, forceMultipart),
+                          ...spoilerExtra,
                           ...(isFirstBatch && j === 0 && captionText ? { caption: captionText, parse_mode: 'HTML' } : {}),
                         }));
                         return tg.sendMediaGroup(
@@ -1313,7 +1387,7 @@ export async function setupZaloHandler(api: ZaloAPI): Promise<void> {
         }
         const stream = createReadStream(localPath);
         try {
-          const sent = await tg.sendVideo(config.telegram.groupId, { source: stream }, tgOpts);
+          const sent = await tg.sendVideo(config.telegram.groupId, { source: stream }, { ...tgOpts, ...spoilerExtra });
           saveTgMapping(sent);
         } finally { await cleanTemp(localPath); }
         return;

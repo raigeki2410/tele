@@ -1,6 +1,13 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import path from 'path';
 import { PROJECT_ROOT } from './utils/paths.js';
+
+// `.env` is the single source of truth for this instance. `override: true` makes
+// it beat variables inherited from the parent shell: several instances launched
+// from one supervisor would otherwise share whatever TG_TOKEN / TG_GROUP_ID /
+// LOCAL_BOT_API happened to be in the environment (dotenv skips existing keys by
+// default, silently ignoring each instance's own .env).
+dotenv.config({ override: true });
 
 function requireEnv(key: string): string {
   const val = process.env[key];
@@ -75,6 +82,10 @@ export const config = {
      *  Chỉ dùng khi LOCAL_BOT_API=1 và TG_LOCAL_SERVER được set.
      *  Nếu không → dùng official api.telegram.org. */
     localServer: localBotApiServer(),
+    // Cover photos/videos forwarded from Zalo with Telegram's spoiler animation.
+    // Default state only — the /spoiler command (and its saved state) overrides
+    // it at runtime. Off by default; set TG_MEDIA_SPOILER=1 to default to on.
+    mediaSpoiler: envFlag('TG_MEDIA_SPOILER'),
   },
   zalo: {
     credentialsPath: resolvePath(process.env.ZALO_CREDENTIALS_PATH, 'credentials.json'),
@@ -90,6 +101,14 @@ export const config = {
     // Threads to never mirror, as "type:id" pairs (type 0=DM, 1=group).
     // Bare ids are treated as groups. Messages from these threads are ignored.
     excludeThreads: excludeThreads(),
+  },
+  tammi: {
+    url: process.env.TAMMI_BRIDGE_URL?.replace(/\/+$/, '') ?? '',
+    token: process.env.TAMMI_BRIDGE_TOKEN ?? '',
+    telegramToken: process.env.TAMMI_TG_TOKEN ?? '',
+    telegramGroupId: process.env.TAMMI_TG_GROUP_ID
+      ? Number(process.env.TAMMI_TG_GROUP_ID)
+      : requireTelegramGroupId(),
   },
   dataDir: resolvePath(process.env.DATA_DIR, 'data'),
 } as const;

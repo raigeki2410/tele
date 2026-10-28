@@ -8,7 +8,7 @@ const cwd = path.resolve(import.meta.dirname, '..');
 const CONFIG_KEYS = [
   'TG_TOKEN', 'TG_GROUP_ID', 'LOCAL_BOT_API', 'TG_LOCAL_SERVER',
   'DATA_DIR', 'ZALO_CREDENTIALS_PATH', 'ZALO_SKIP_MUTED_GROUPS', 'ZALO_MUTE_SILENT',
-  'ZALO_DM_NATIVE_REACTION', 'ZALO_EXCLUDE_THREADS',
+  'ZALO_DM_NATIVE_REACTION', 'ZALO_EXCLUDE_THREADS', 'TG_MEDIA_SPOILER',
 ] as const;
 
 function runConfig(overrides: Record<string, string | undefined>) {

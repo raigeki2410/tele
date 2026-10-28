@@ -2,7 +2,6 @@ import { Zalo, LoginQRCallbackEventType } from 'zca-js';
 import type { LoginQRCallback } from 'zca-js';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { imageSizeFromFile } from 'image-size/fromFile';
-import qrcode from 'qrcode-terminal';
 import { config } from '../config.js';
 import { writePrivateJsonFileSync } from '../utils/privateFile.js';
 import { createSharedTempPath, prepareSharedTempFile } from '../utils/sharedTemp.js';
@@ -88,18 +87,15 @@ async function runQRLogin(
         const { code } = event.data;
         _activeQRAbort = event.actions.abort;
 
-        // Save QR image first, then notify hooks
+        // Save QR image first, then notify hooks.
+        // NOTE: `code` is an internal token, NOT a scannable login QR. Only the
+        // saved image encodes the `zaloapp.com/qr/l?tk=...` payload, so we must
+        // NOT render a QR from `code` — scanning that only shows a raw token.
         const savePromise = event.actions.saveToFile(qrImagePath)
           .then(async () => {
-            // Print to terminal
-            await new Promise<void>((res) => {
-              qrcode.generate(code, { small: true }, (qrStr) => {
-                prepareSharedTempFile(qrImagePath);
-                terminal.qr(qrImagePath);
-                console.log(qrStr);
-                res();
-              });
-            });
+            prepareSharedTempFile(qrImagePath);
+            terminal.qr(qrImagePath);
+            console.log(`[Zalo] QR ready — scan the image sent to Telegram (file: ${qrImagePath})`);
             // Notify external hook (e.g. send to Telegram)
             await hooks.onQRReady?.(qrImagePath, code);
           })

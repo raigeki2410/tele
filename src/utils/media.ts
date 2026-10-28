@@ -77,12 +77,14 @@ export async function downloadToTemp(url: string, fileName?: string, retries = 3
     }
 
     const filePath = path.join(TMP_DIR, `${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${baseName}`);
+    const startedAt = Date.now();
+    console.log(`[media] GET ${url.slice(0, 140)} (attempt ${attempt + 1}/${retries})`);
     try {
       const resp = await axios.get<NodeJS.ReadableStream>(url, {
         responseType: 'stream',
         timeout: 15_000, // 15 s per attempt; downloadToTemp retries 3x on failure,
                          // so total wait is bounded to roughly 15s×3 + backoff
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ZaloTGBridge/1.0)' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0' },
         // Force IPv4-only DNS resolution/connect. Node's Happy Eyeballs
         // (RFC 8305, default since Node 18) tries IPv6 candidates first; in
         // many Docker setups the container has no working IPv6 route, so
@@ -108,9 +110,11 @@ export async function downloadToTemp(url: string, fileName?: string, retries = 3
         continue;
       }
 
+      console.log(`[media] OK ${size} bytes in ${Date.now() - startedAt}ms`);
       return filePath;
     } catch (err) {
       await unlink(filePath).catch(() => undefined);
+      console.warn(`[media] FAIL after ${Date.now() - startedAt}ms: ${err instanceof Error ? err.message : String(err)}`);
       lastErr = err;
     }
   }
