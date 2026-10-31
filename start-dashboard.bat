@@ -48,12 +48,69 @@ if not exist "%DASHBOARD%\package.json" (
     pause
     exit /b 1
 )
+call :setup_env
+if errorlevel 1 (
+    pause
+    exit /b 1
+)
 call :sync_api_key
 if errorlevel 1 (
     pause
     exit /b 1
 )
 goto :main
+
+:: Thiết lập file .env gốc từ .env.example nếu chưa có
+:setup_env
+if not exist "%ROOT%\.env" (
+    if exist "%ROOT%\.env.example" (
+        echo [INFO] Root .env not found. Copying from .env.example...
+        copy "%ROOT%\.env.example" "%ROOT%\.env" >nul
+        echo [OK] Created root .env from template
+    ) else (
+        echo [ERROR] .env.example not found at %ROOT%
+        exit /b 1
+    )
+)
+:: Kiểm tra và nhắc nhập TG_TOKEN, TG_GROUP_ID nếu còn placeholder
+set "TG_TOKEN="
+set "TG_GROUP_ID="
+for /f "tokens=1,* delims==" %%A in ('findstr /b "TG_TOKEN= TG_GROUP_ID=" "%ROOT%\.env" 2^>nul') do (
+    if "%%A"=="TG_TOKEN" set "TG_TOKEN=%%B"
+    if "%%A"=="TG_GROUP_ID" set "TG_GROUP_ID=%%B"
+)
+if "%TG_TOKEN%"=="1234567890:ABCDEFabcdef1234567890abcdefABCDEF123" set "TG_TOKEN="
+if "%TG_GROUP_ID%"=="-1001234567890" set "TG_GROUP_ID="
+if "%TG_TOKEN%"=="YOUR_TELEGRAM_BOT_TOKEN_HERE" set "TG_TOKEN="
+if "%TG_GROUP_ID%"=="" set "TG_GROUP_ID="
+if not defined TG_TOKEN (
+    echo [WARN] TG_TOKEN not set in .env
+    set /p "TG_TOKEN=Enter Telegram Bot Token (from @BotFather): "
+    if defined TG_TOKEN (
+        powershell -Command "(Get-Content '%ROOT%\.env') -replace '^TG_TOKEN=.*', 'TG_TOKEN=%TG_TOKEN%' | Set-Content '%ROOT%\.env' -Encoding UTF8"
+        echo [OK] TG_TOKEN updated
+    ) else (
+        echo [ERROR] TG_TOKEN is required for Telegram bridge to work
+        exit /b 1
+    )
+)
+if not defined TG_GROUP_ID (
+    echo [WARN] TG_GROUP_ID not set in .env
+    set /p "TG_GROUP_ID=Enter Telegram Group ID (negative number, e.g., -1001234567890): "
+    if defined TG_GROUP_ID (
+        powershell -Command "(Get-Content '%ROOT%\.env') -replace '^TG_GROUP_ID=.*', 'TG_GROUP_ID=%TG_GROUP_ID%' | Set-Content '%ROOT%\.env' -Encoding UTF8"
+        echo [OK] TG_GROUP_ID updated
+    ) else (
+        echo [ERROR] TG_GROUP_ID is required for Telegram bridge to work
+        exit /b 1
+    )
+)
+:: Đồng bộ TG_TOKEN, TG_GROUP_ID sang control-api/.env
+if exist "%API%\.env" (
+    powershell -Command "$root=Get-Content '%ROOT%\.env'; $api=Get-Content '%API%\.env'; $new=@(); foreach($line in $api){ if($line -match '^TG_TOKEN='){ $new+='TG_TOKEN=%TG_TOKEN%' } elseif($line -match '^TG_GROUP_ID='){ $new+='TG_GROUP_ID=%TG_GROUP_ID%' } else{ $new+=$line } }; $new | Set-Content '%API%\.env' -Encoding UTF8"
+    echo [OK] Synced TG config to control-api/.env
+)
+exit /b 0
 
 :: Đồng bộ API_KEY giữa Control API và Dashboard
 :sync_api_key
