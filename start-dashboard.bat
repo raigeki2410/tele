@@ -56,7 +56,7 @@ set "TARGET_DIR=%~1"
 set "LABEL=%~2"
 if not exist "%TARGET_DIR%\node_modules" (
     echo [INFO] %LABEL%: node_modules missing -> running npm install...
-    cd /d "%TARGET_DIR%" && npm install
+    cd /d "%TARGET_DIR%" && call npm install
     if errorlevel 1 (
         echo [ERROR] npm install failed for %LABEL%
         pause
@@ -75,7 +75,7 @@ echo.
 
 :: Build Control API (npm start cần dist/, dev dùng ts-node)
 echo [INFO] Building Control API...
-cd /d "%API%" && npm run build
+cd /d "%API%" && call npm run build
 if errorlevel 1 (
     echo [ERROR] Control API build failed
     pause
@@ -87,16 +87,16 @@ echo.
 
 :: Khởi động Backend (dev mode với ts-node để hot-reload)
 echo [INFO] Starting Control API (dev mode)...
-start "TELE Control API" cmd /k "cd /d "%API%" && npm run dev"
+start "TELE Control API" cmd /k "cd /d ""%API%"" && call npm run dev"
 
 :: Khởi động Frontend
 echo [INFO] Starting Dashboard (dev mode)...
-start "TELE Dashboard" cmd /k "cd /d "%DASHBOARD%" && npm run dev"
+start "TELE Dashboard" cmd /k "cd /d ""%DASHBOARD%"" && call npm run dev"
 
 echo.
 echo ==========================================
 echo  Control API : http://localhost:3001
-echo  Dashboard   : http://localhost:5173
+echo  Dashboard   : http://localhost:5174
 echo ==========================================
 echo.
 echo Two terminal windows launched.
