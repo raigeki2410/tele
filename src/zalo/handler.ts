@@ -19,6 +19,23 @@ import { msgStore, userCache, pollStore, sentMsgStore, zaloAlbumStore, reactionE
 import { tgQueue } from '../utils/tgQueue.js';
 import { isMediaSpoilerEnabled } from '../utils/mediaSpoiler.js';
 import { maybeAutoReply } from './autoReply.js';
+import { appendReportMessage } from '../reporting.js';
+
+export type ZaloRawMessage = ZaloMessage & { _rawReceivedAt: string };
+
+const _zaloSubscribers = new Set<(msg: ZaloRawMessage) => void>();
+
+export function subscribeZalo(listener: (msg: ZaloRawMessage) => void): () => void {
+  _zaloSubscribers.add(listener);
+  return () => _zaloSubscribers.delete(listener);
+}
+
+function emitZaloRaw(msg: ZaloMessage): void {
+  const enriched: ZaloRawMessage = { ...msg, _rawReceivedAt: new Date().toISOString() };
+  for (const cb of _zaloSubscribers) {
+    try { cb(enriched); } catch { /* ignore subscriber errors */ }
+  }
+}
 
 /**
  * fs.createReadStream() streams are one-shot. tgQueue retries by re-invoking the
@@ -920,6 +937,14 @@ export async function setupZaloHandler(api: ZaloAPI): Promise<void> {
 
       // Parse content early so we can start media download in parallel with topic resolution
       const { text, media } = parseContent(msg.data.content);
+      if (!msg.isSelf && text?.trim()) {
+        const rawTimestamp = Number(msg.data.ts);
+        appendReportMessage(config.dataDir, {
+          instance: path.basename(process.cwd()), platform: 'zalo', groupId: zaloId,
+          sender: senderUid || 'unknown', text,
+          timestamp: Number.isFinite(rawTimestamp) ? new Date(rawTimestamp < 1e12 ? rawTimestamp * 1000 : rawTimestamp).toISOString() : msg.data.ts,
+        });
+      }
 
       // Determine media URL eagerly (before topic lookup) so download starts immediately
       const _eagerMediaUrl = (() => {
@@ -2031,7 +2056,11 @@ export async function setupZaloHandler(api: ZaloAPI): Promise<void> {
     }
   };
   _activeMessageHandler = handleZaloMessage;
-  api.listener.on('message', message => { void handleZaloMessage(message as unknown as ZaloMessage); });
+  api.listener.on('message', message => {
+    const zaloMsg = message as unknown as ZaloMessage;
+    emitZaloRaw(zaloMsg);
+    void handleZaloMessage(zaloMsg);
+  });
 
   // Catch-up stream from zca-js after reconnect.
   // Replays recent messages through the same main handler to refill bridges.

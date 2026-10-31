@@ -7,7 +7,9 @@ import { PROJECT_ROOT } from './utils/paths.js';
 // from one supervisor would otherwise share whatever TG_TOKEN / TG_GROUP_ID /
 // LOCAL_BOT_API happened to be in the environment (dotenv skips existing keys by
 // default, silently ignoring each instance's own .env).
-dotenv.config({ override: true });
+// In tests, DOTENV_CONFIG_PATH can be set to a non-existent path to skip .env loading.
+const dotenvPath = process.env.DOTENV_CONFIG_PATH;
+dotenv.config({ override: true, path: dotenvPath && dotenvPath !== 'none' ? dotenvPath : undefined });
 
 function requireEnv(key: string): string {
   const val = process.env[key];

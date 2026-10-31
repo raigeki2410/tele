@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 const cwd = path.resolve(import.meta.dirname, '..');
+
+// Non-existent path to prevent dotenv from loading project .env
+const nonexistentEnvPath = path.join(os.tmpdir(), `zalo-tg-nonexistent-${process.pid}.env`);
 
 const CONFIG_KEYS = [
   'TG_TOKEN', 'TG_GROUP_ID', 'LOCAL_BOT_API', 'TG_LOCAL_SERVER',
@@ -18,6 +22,8 @@ function runConfig(overrides: Record<string, string | undefined>) {
   for (const key of CONFIG_KEYS) {
     if (!(key in overrides)) env[key] = '';
   }
+  // Prevent dotenv from loading project .env file
+  env.DOTENV_CONFIG_PATH = nonexistentEnvPath;
   Object.assign(env, overrides);
   const script = `
     import('./src/config.ts')

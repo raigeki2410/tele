@@ -55,6 +55,7 @@ import { zaloApiWithRetry, isTransientNetworkError } from '../utils/zaloRetry.js
 import { tgQueue } from '../utils/tgQueue.js';
 import { requestShutdown } from '../lifecycle.js';
 import { startSetupWizard, handleSetupCallback, hasActiveSetup, consumeSetupTextAndAdvance } from './setupWizard.js';
+import { readReportMessages, summarizeReport } from '../reporting.js';
 
 // Bridge start time (module load = process start)
 const _bridgeStartTime = Date.now();
@@ -423,6 +424,16 @@ export function setupTelegramHandler(
 
   /** Exposed setter so index.ts can inject the auto-logged-in API. */
   const setCurrentApi = (api: ZaloAPI) => { currentApi = api; };
+
+  tgBot.command('report', async (ctx) => {
+    if (ctx.chat.id !== config.telegram.groupId) return;
+    if (!await requireTelegramOperator(ctx, 'xem báo cáo')) return;
+    const end = new Date();
+    const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+    const summary = summarizeReport(readReportMessages(config.dataDir), start, end);
+    const lines = Object.entries(summary.groups).map(([group, count]) => `• ${group}: ${count}`);
+    await ctx.reply(`📊 Báo cáo 24 giờ\nTin nhắn: ${summary.messages}\n${lines.length ? lines.join('\\n') : 'Không có dữ liệu.'}`);
+  });
 
   tgBot.command('login', async (ctx) => {
     const isPrivate   = ctx.chat.type === 'private';

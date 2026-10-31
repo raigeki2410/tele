@@ -1,0 +1,6 @@
+import { useEffect, useState } from 'react';
+import { getConversations, getRoutes } from '../api';
+
+type Row = Record<string, string>;
+function Table({ title, rows }: { title: string; rows: Row[] }) { const keys = rows[0] ? Object.keys(rows[0]) : []; return <section className="rounded-lg bg-white p-5 shadow"><h2 className="mb-4 text-lg font-semibold">{title}</h2>{rows.length === 0 ? <p>No data.</p> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead><tr>{keys.map(k => <th className="p-2 text-left text-slate-500" key={k}>{k}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr className="border-t" key={i}>{keys.map(k => <td className="p-2" key={k}>{row[k]}</td>)}</tr>)}</tbody></table></div>}</section> }
+export default function ConversationsPage() { const [conversations, setConversations] = useState<Row[]>([]); const [routes, setRoutes] = useState<Row[]>([]); useEffect(() => { Promise.all([getConversations(), getRoutes()]).then(([c, r]) => { setConversations(c); setRoutes(r); }); }, []); return <div className="space-y-6"><Table title="Message routing" rows={routes} /><Table title="Recent conversations" rows={conversations} /></div>; }

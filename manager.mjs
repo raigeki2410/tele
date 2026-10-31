@@ -25,13 +25,14 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const INSTANCES_DIR = path.join(ROOT, 'instances');
 const LOGS_DIR = path.join(ROOT, 'logs');
 const ENTRY = path.join(ROOT, 'dist', 'index.js');
+const WHATSAPP_ENTRY = path.join(ROOT, 'dist', 'whatsapp', 'index.js');
 const POLL_MS = 3000;
 const RENDER_MS = 1000;
 const FAST_EXIT_MS = 10_000;
 const RECENT_LINES = 10;
 
-if (!existsSync(ENTRY)) {
-  console.error('[manager] dist/index.js not found - run: npm run build');
+if (!existsSync(ENTRY) || !existsSync(WHATSAPP_ENTRY)) {
+  console.error('[manager] dist entry missing - run: npm run build');
   process.exit(1);
 }
 
@@ -52,7 +53,7 @@ const CONFIG_KEYS = [
   'TG_TOKEN', 'TG_GROUP_ID', 'TG_LOCAL_SERVER', 'TG_API_ID', 'TG_API_HASH',
   'LOCAL_BOT_API', 'ZALO_CREDENTIALS_PATH', 'DATA_DIR', 'ZALO_SKIP_MUTED_GROUPS',
   'ZALO_EXCLUDE_THREADS', 'ZALO_MUTE_SILENT', 'ZALO_DM_NATIVE_REACTION',
-  'TG_MEDIA_SPOILER',
+  'TG_MEDIA_SPOILER', 'WA_ACCOUNT_ID', 'CHROME_PATH',
 ];
 
 function childEnv() {
@@ -80,6 +81,15 @@ function pushRecent(line) {
   while (recent.length > RECENT_LINES) recent.shift();
 }
 
+function getInstanceType(name) {
+  const typeFile = path.join(INSTANCES_DIR, name, '.type');
+  if (existsSync(typeFile)) {
+    const content = readFileSync(typeFile, 'utf8').trim().toLowerCase();
+    if (content === 'whatsapp' || content === 'wa') return 'whatsapp';
+    if (content === 'zalo' || content === 'zalo-tg') return 'zalo';
+  }
+  return 'zalo';
+}
 function discover() {
   if (!existsSync(INSTANCES_DIR)) return [];
   const names = readdirSync(INSTANCES_DIR, { withFileTypes: true })
@@ -97,8 +107,11 @@ function envMtime(name) {
 function noteLine(name, text) {
   if (text.includes('TELEGRAM') && text.includes('polling connected')) setStatus(name, { telegram: 'up' });
   if (text.includes('Telegram polling stopped') || text.includes('polling failure')) setStatus(name, { telegram: 'down' });
+  if (text.includes('[WhatsApp:') && text.includes('bridge ready')) setStatus(name, { zalo: 'up' });
+  if (text.includes('[WhatsApp:') && (text.includes('auth failure') || text.includes('disconnected'))) setStatus(name, { zalo: 'down' });
   if (text.includes('ZALO LOGIN') && text.includes('authenticated')) setStatus(name, { zalo: 'connecting' });
   if (text.includes('listener started')) setStatus(name, { zalo: 'up' });
+  if (text.includes('Zalo disconnected') || text.includes('listener closed') || text.includes('Zalo reconnect failed')) setStatus(name, { zalo: 'down' });
   if (text.includes('auto-login failed') || text.includes('Chua dang nhap Zalo') || text.includes('Chưa đăng nhập Zalo')) {
     setStatus(name, { zalo: 'no-login' });
   }
@@ -112,7 +125,9 @@ function start(name) {
   const log = createWriteStream(path.join(LOGS_DIR, `${name}.log`), { flags: 'a' });
   log.write(`\n=== ${new Date().toISOString()} starting ${name} ===\n`);
 
-  const child = spawn(process.execPath, ['--disable-warning=DEP0205', ENTRY], {
+  const type = getInstanceType(name);
+  const entry = type === 'whatsapp' ? WHATSAPP_ENTRY : ENTRY;
+  const child = spawn(process.execPath, ['--disable-warning=DEP0205', entry], {
     cwd,
     env: childEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],

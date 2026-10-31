@@ -17,6 +17,7 @@ const BOT_COMMANDS = [
   { command: 'recall',         description: 'Thu hồi tin nhắn đã gửi sang Zalo' },
   { command: 'topic',          description: 'Quản lý topic: list | info | delete' },
   { command: 'history',        description: 'Nạp lịch sử chat nhóm vào topic hiện tại' },
+  { command: 'report',         description: 'Xem báo cáo text 24 giờ' },
   { command: 'autoreply',      description: 'Tự trả lời DM khi offline: on | off | status' },
   { command: 'spoiler',        description: 'Che mờ ảnh/video Zalo→Telegram: on | off | status' },
   { command: 'addgroup',       description: 'Tạo nhóm Zalo mới từ topic hiện tại' },

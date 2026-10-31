@@ -9,6 +9,7 @@ bin/
 .env
 .env.*
 !.env.example
+!.env.staging.template
 .env.root-old
 credentials.json
 *.json.bak

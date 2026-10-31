@@ -15,6 +15,22 @@ let lastEventId = '';
 let running = false;
 let bridgeProcess: ChildProcess | undefined;
 
+export type TammiRawEvent = Incoming & { _rawReceivedAt: string };
+
+const _tammiSubscribers = new Set<(evt: TammiRawEvent) => void>();
+
+export function subscribeTammi(listener: (evt: TammiRawEvent) => void): () => void {
+  _tammiSubscribers.add(listener);
+  return () => _tammiSubscribers.delete(listener);
+}
+
+function emitTammiRaw(payload: Incoming): void {
+  const enriched: TammiRawEvent = { ...payload, _rawReceivedAt: new Date().toISOString() };
+  for (const cb of _tammiSubscribers) {
+    try { cb(enriched); } catch { /* ignore subscriber errors */ }
+  }
+}
+
 function save(): void {
   mkdirSync(config.dataDir, { recursive: true });
   writeFileSync(`${file}.tmp`, JSON.stringify(mappings, null, 2));
@@ -91,6 +107,7 @@ export async function sendTammi(topicId: number, text: string): Promise<void> {
 }
 
 async function receive(payload: Incoming): Promise<void> {
+  emitTammiRaw(payload);
   const conversationId = field(payload.conversationId);
   if (!conversationId) return;
   const sender = field(payload.senderName) || field(payload.senderId) || 'Tammi';

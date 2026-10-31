@@ -31,18 +31,9 @@ if not exist "%ROOT%dist\index.js" (
   )
 )
 
-if not "%~1"=="" (
-  if not exist "%ROOT%instances\%~1\.env" (
-    echo [Launcher] Unknown instance "%~1".
-    echo [Launcher] Use:  run.bat list
-    pause
-    exit /b 1
-  )
-)
-
 echo [Launcher] Starting in THIS window (all instances). Logs: logs\^<name^>.log
 echo [Launcher] Ctrl+C stops everything.
-node "%ROOT%manager.mjs" %~1
+node "%ROOT%manager.mjs"
 
 echo.
 echo [Launcher] Manager exited.

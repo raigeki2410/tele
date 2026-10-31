@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
-process.env.TG_TOKEN ||= 'test-token';
-process.env.TG_GROUP_ID ||= '-1001';
+process.env.DOTENV_CONFIG_PATH = path.join(os.tmpdir(), `zalo-tg-nonexistent-${process.pid}.env`);
+process.env.TG_TOKEN = 'test-token';
+process.env.TG_GROUP_ID = '-1001';
 process.env.DATA_DIR = path.join(os.tmpdir(), `zalo-tg-store-test-${process.pid}-${Date.now()}`);
 
 const { config } = await import('../src/config.js');
