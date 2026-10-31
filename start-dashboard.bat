@@ -48,7 +48,31 @@ if not exist "%DASHBOARD%\package.json" (
     pause
     exit /b 1
 )
+call :sync_api_key
+if errorlevel 1 (
+    pause
+    exit /b 1
+)
 goto :main
+
+:: Đồng bộ API_KEY giữa Control API và Dashboard
+:sync_api_key
+set "API_KEY="
+if exist "%API%\.env" (
+    for /f "tokens=1,* delims==" %%A in ('findstr /b "API_KEY=" "%API%\.env" 2^>nul') do set "API_KEY=%%B"
+)
+if not defined API_KEY (
+    echo [INFO] API_KEY missing; generating local development key...
+    for /f "delims=" %%K in ('powershell -NoProfile -Command "[guid]::NewGuid().ToString('N')"') do set "API_KEY=%%K"
+    >>"%API%\.env" echo API_KEY=%API_KEY%
+)
+if not defined API_KEY (
+    echo [ERROR] Could not create API_KEY.
+    exit /b 1
+)
+>"%DASHBOARD%\.env" echo VITE_API_KEY=%API_KEY%
+echo [OK] Dashboard API key synchronized
+exit /b 0
 
 :: Hàm cài đặt dependency nếu thiếu node_modules
 :install_deps
@@ -91,7 +115,7 @@ start "TELE Control API" cmd /k "cd /d ""%API%"" && call npm run dev"
 
 :: Khởi động Frontend
 echo [INFO] Starting Dashboard (dev mode)...
-start "TELE Dashboard" cmd /k "cd /d ""%DASHBOARD%"" && call npm run dev"
+start "TELE Dashboard" cmd /k "cd /d ""%DASHBOARD%"" && set VITE_API_KEY=%API_KEY% && call npm run dev"
 
 echo.
 echo ==========================================

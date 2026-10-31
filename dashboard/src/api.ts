@@ -3,7 +3,7 @@ import axios from 'axios';
 const apiClient = axios.create({
   baseURL: '/api',
   headers: {
-    'X-API-Key': import.meta.env.VITE_API_KEY || 'your_secret_api_key',
+    'X-API-Key': process.env.VITE_API_KEY,
     'Content-Type': 'application/json',
   },
   withCredentials: true,
